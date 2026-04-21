@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Graphing Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <style>
+        :root {
+            --bg-app: #f8f9fa; --bg-sidebar: #ffffff; --bg-viewport: #ffffff;
+            --primary: #004d99; --border: #dee2e6; --text: #212529;
+            --text-muted: #666666; --grid: #eef; --axis: #333; --label: #99a;
+            --sidebar-width: 320px;
+        }
+        [data-theme="dark"] {
+            --bg-app: #121212; --bg-sidebar: #ffffff; --bg-viewport: #181818;
+            --primary: #4dabf7; --border: #333333; --text: #e0e0e0;
+            --text-muted: #aaaaaa; --grid: #2a2a2a; --axis: #555; --label: #777;
+        }
+        [data-theme="excentric"] {
+            --bg-app: #fff0f6; --bg-sidebar: #ffffff; --bg-viewport: #fff5f5;
+            --primary: #d63384; --border: #ffdeeb; --text: #480d27;
+            --text-muted: #a61e4d; --grid: #ffebf3; --axis: #c2255c; --label: #e64980;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, system-ui, sans-serif; overflow: hidden; background: var(--bg-app); color: var(--text); }
+        .app-container { display: flex; height: 100vh; }
+        .sidebar { width: var(--sidebar-width); background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; transition: transform 0.3s; }
+        .sidebar-header { padding: 15px; background: var(--primary); color: white; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .theme-select { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 4px; padding: 2px 5px; font-size: 0.75rem; outline: none; }
+        .theme-select option { background: var(--bg-sidebar); color: var(--text); }
+        .tabs { display: flex; background: var(--bg-app); border-bottom: 1px solid var(--border); }
+        .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 0.8rem; color: var(--text-muted); border-bottom: 2px solid transparent; }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: bold; }
+        .function-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .function-item { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; position: relative; }
+        .function-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .mode-select { font-size: 0.7rem; padding: 2px; border: 1px solid var(--border); background: var(--bg-app); color: var(--text); border-radius: 4px; }
+        .input-row { display: flex; align-items: center; gap: 5px; margin-top: 5px; }
+        .input-prefix { font-size: 0.8rem; font-family: monospace; color: var(--text-muted); min-width: 35px; }
+        .function-input { flex: 1; background: var(--bg-sidebar); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; font-family: monospace; }
+        .btn-icon { background: none; border: none; cursor: pointer; padding: 0 4px; font-size: 1rem; color: var(--text); opacity: 0.7; }
+        .btn-icon:hover { opacity: 1; }
+        .color-picker { width: 18px; height: 18px; border: none; padding: 0; background: none; cursor: pointer; border-radius: 50%; overflow: hidden; }
+        .param-section { padding: 10px; background: var(--bg-app); border-top: 1px solid var(--border); max-height: 150px; overflow-y: auto; }
+        .param-slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.75rem; }
+        .viewport { flex: 1; position: relative; background: var(--bg-viewport); overflow: hidden; }
+        canvas { display: block; touch-action: none; }
+        .controls-overlay { position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 15; }
+        .btn-round { width: 44px; height: 44px; border-radius: 50%; background: var(--bg-sidebar); border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text); font-size: 1.1rem; }
+        .cas-container { display: none; flex-direction: column; flex: 1; padding: 10px; overflow: hidden; }
+        .cas-container.active { display: flex; }
+        .cas-history { flex: 1; overflow-y: auto; font-family: monospace; font-size: 0.85rem; margin-bottom: 10px; }
+        .cas-entry { margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+        .cas-input-line { color: var(--primary); font-weight: bold; }
+        .cas-input-wrapper { display: flex; gap: 5px; }
+        .cas-input { flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-app); color: var(--text); font-family: monospace; outline: none; }
+        .analysis-menu { position: absolute; top: 10px; right: 10px; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; display: none; flex-direction: column; z-index: 40; width: 150px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .analysis-item { padding: 12px; cursor: pointer; font-size: 0.85rem; border-bottom: 1px solid var(--border); }
+        .analysis-item:hover { background: var(--bg-app); }
+        .trace-info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.75); color: white; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; pointer-events: none; display: none; z-index: 20; }
+        .table-panel { position: absolute; top: 0; right: -320px; width: 300px; height: 100%; background: var(--bg-sidebar); border-left: 1px solid var(--border); z-index: 30; transition: right 0.3s; display: flex; flex-direction: column; }
+        .table-panel.open { right: 0; }
+        @media (max-width: 768px) {
+            .app-container { flex-direction: column; }
+            .sidebar { width: 100%; height: 50%; border-right: none; border-bottom: 1px solid var(--border); }
+            .viewport { height: 50%; }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <span>Graphing Calculator</span>
+            <div style="display:flex; gap:5px;">
+                <button class="btn-icon" onclick="showTemplates()" title="Templates" style="color:white">📄</button>
+                <button class="btn-icon" onclick="clearAllFunctions()" title="Clear All" style="color:white">🧹</button>
+                <select class="theme-select" onchange="setTheme(this.value)">
+                    <option value="classic">Classic</option>
+                    <option value="dark">Dark</option>
+                    <option value="excentric">Excentric</option>
+                </select>
+            </div>
+        </div>
+        <div class="tabs">
+            <div class="tab active" id="tabFunctions" onclick="switchTab('functions')">Functions</div>
+            <div class="tab" id="tabCAS" onclick="switchTab('cas')">CAS</div>
+        </div>
+        <div id="functionsContainer" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+            <div class="function-list" id="functionList"></div>
+            <div id="paramSection" class="param-section" style="display: none;">
+                <div style="font-size: 0.75rem; font-weight: bold; margin-bottom: 8px; color: var(--primary);">Parameters</div>
+                <div id="paramList"></div>
+            </div>
+            <button onclick="addFunction()" style="padding: 12px; background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; font-size: 0.9rem;">+ Add Function</button>
+        </div>
+        <div id="casContainer" class="cas-container">
+            <div class="cas-history" id="casHistory"></div>
+            <div class="cas-input-wrapper">
+                <button class="btn-icon" onclick="insertConstant('pi')" title="Insert Pi">π</button>
+                <button class="btn-icon" onclick="showCASTemplates()" title="CAS Templates">📄</button>
+                <input type="text" class="cas-input" id="casInput" placeholder="diff(x^2, x)..." onkeydown="handleCASKeyDown(event)">
+                <button onclick="runCAS()" style="padding: 0 15px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Go</button>
+            </div>
+        </div>
+    </div>
+    <div class="viewport" id="viewport">
+        <div class="trace-info" id="traceInfo"></div>
+        <div class="analysis-menu" id="analysisMenu">
+            <div class="analysis-item" onclick="startAnalysis('zero')">Zero (Root)</div>
+            <div class="analysis-item" onclick="startAnalysis('min')">Minimum</div>
+            <div class="analysis-item" onclick="startAnalysis('max')">Maximum</div>
+            <div class="analysis-item" onclick="startAnalysis('intersection')">Intersection</div>
+            <div style="height: 1px; background: var(--border);"></div>
+            <div class="analysis-item" style="color: #ff4757" onclick="state.analysis.points=[]; draw(); toggleAnalysisMenu();">Clear All</div>
+        </div>
+        <canvas id="graphCanvas"></canvas>
+        <div class="controls-overlay">
+            <button class="btn-round" onclick="exportPNG()" title="Export PNG">📸</button>
+            <button class="btn-round" onclick="toggleAnalysisMenu()" title="Analyze Graph">A</button>
+            <button class="btn-round" onclick="toggleTable()" title="Value Table">T</button>
+            <button class="btn-round" onclick="zoom(0.8)" title="Zoom In">+</button>
+            <button class="btn-round" onclick="zoom(1.25)" title="Zoom Out">-</button>
+            <button class="btn-round" onclick="resetView()" title="Home">⌂</button>
+        </div>
+        <div class="table-panel" id="tablePanel">
+            <div style="padding:15px; background:var(--primary); color:white; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
+                Table <button onclick="toggleTable()" style="background:none; border:none; color:white; cursor:pointer; font-size: 1.2rem;">×</button>
+            </div>
+            <div style="padding:10px; font-size:0.8rem; background: var(--bg-app); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <span style="font-weight:bold;">Function:</span>
+                    <select id="tableFunctionSelect" style="flex:1; padding:2px; font-size:0.8rem; border-radius:4px; border:1px solid var(--border); background:var(--bg-sidebar); color:var(--text);" onchange="updateTable()"></select>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <span>Start: <input type="number" id="tableStart" value="0" style="width:55px" oninput="updateTable()"></span>
+                    <span>Step: <input type="number" id="tableStep" value="1" step="0.1" style="width:55px" oninput="updateTable()"></span>
+                </div>
+            </div>
+            <div style="flex:1; overflow-y:auto; padding:10px;">
+                <table id="valueTable" style="width:100%; border-collapse:collapse; font-size:0.85rem; text-align: right;">
+                    <thead><tr><th style="border:1px solid var(--border); padding:5px;">x</th><th style="border:1px solid var(--border); padding:5px;">y</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="templatesModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:100;">
+            <div style="background:var(--bg-sidebar); padding:20px; border-radius:12px; max-width:500px; width:95%; box-shadow:0 10px 30px rgba(0,0,0,0.2); max-height: 80vh; overflow-y: auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <strong id="templateModalTitle" style="font-size:1.1rem;">Templates</strong>
+                    <button class="btn-icon" onclick="hideTemplates()">×</button>
+                </div>
+                <div id="templateGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const canvas = document.getElementById('graphCanvas'), ctx = canvas.getContext('2d');
+    const viewport = document.getElementById('viewport'), functionList = document.getElementById('functionList');
+    
+    const state = {
+        functions: [{ id: 'fn'+Date.now(), type: 'function', expression: 'sin(x)', color: '#ff4757', enabled: true, exprX: '', exprY: '', exprR: '', tMin: 0, tMax: 6.28, thetaMin: 0, thetaMax: 6.28 }],
+        view: { centerX: 0, centerY: 0, scale: 50 },
+        theme: 'classic', casHistory: [], casHistoryIndex: -1, analysis: { mode: null, points: [] },
+        params: { a: 1, b: 1, c: 1 },
+        interaction: { isPanning: false, lastMouseX: 0, lastMouseY: 0, traceX: null }
+    };
+
+    function showTemplates() {
+        const modal = document.getElementById('templatesModal');
+        const grid = document.getElementById('templateGrid');
+        document.getElementById('templateModalTitle').textContent = 'Function Templates';
+        grid.innerHTML = `
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('function', ['a*x + b'])">Linear (ax+b)</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('function', ['a*x^2 + b*x + c'])">Quadratic</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('function', ['a*sin(b*x + c)'])">Sine Wave</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('function', ['a*e^(b*x)'])">Exponential</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('polar', ['a*cos(b*theta)'])">Rose Curve</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('polar', ['a*theta'])">Archimedean Spiral</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('parametric', ['a*cos(t)', 'a*sin(t)'])">Circle</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('parametric', ['a*cos(t)^3', 'a*sin(t)^3'])">Astroid</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="useTemplate('function', ['e^(-x^2)'])">Bell Curve</button>
+        `;
+        modal.style.display = 'flex';
+    }
+
+    function showCASTemplates() {
+        const modal = document.getElementById('templatesModal');
+        const grid = document.getElementById('templateGrid');
+        document.getElementById('templateModalTitle').textContent = 'CAS Commands';
+        grid.innerHTML = `
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="insertCAS('simplify()')">Simplify</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="insertCAS('derivative(sin(x), x)')">Derivative</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="insertCAS('evaluate(x^2, {x: 2})')">Evaluate At</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="insertCAS('rationalize(x^2+2x+1)')">Rationalize</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="insertCAS('factor(x^2+2x+1)')">Factor</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="insertCAS('abs(-5)')">Absolute Value</button>
+            <button style="padding:10px; cursor:pointer; background:var(--bg-app); border:1px solid var(--border); border-radius:8px; color:var(--text);" onclick="insertCAS('sqrt(16)')">Square Root</button>
+        `;
+        modal.style.display = 'flex';
+    }
+
+    function hideTemplates() {
+        document.getElementById('templatesModal').style.display = 'none';
+    }
+
+    function insertCAS(cmd) {
+        const input = document.getElementById('casInput');
+        input.value = cmd;
+        hideTemplates();
+        input.focus();
+        const idx = cmd.indexOf('()');
+        if (idx !== -1) input.setSelectionRange(idx + 1, idx + 1);
+    }
+
+    function useTemplate(type, exprs) {
+        const colors = ['#3742fa', '#ffa502', '#2ed573', '#ff4757', '#d63384'];
+        const color = colors[state.functions.length % colors.length];
+        const newFn = { id: 'fn'+Date.now(), type, enabled: true, color, exprX: '', exprY: '', exprR: '', expression: '', tMin: 0, tMax: 6.28, thetaMin: 0, thetaMax: 6.28 };
+        if (type === 'function') newFn.expression = exprs[0];
+        else if (type === 'parametric') { newFn.exprX = exprs[0]; newFn.exprY = exprs[1]; }
+        else if (type === 'polar') newFn.exprR = exprs[0];
+        state.functions.push(newFn);
+        renderFunctions(); hideTemplates(); saveState(); draw();
+    }
+
+    function handleCASKeyDown(e) {
+        if (e.key === 'Enter') runCAS();
+        else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (state.casHistory.length > 0) {
+                state.casHistoryIndex = Math.min(state.casHistoryIndex + 1, state.casHistory.length - 1);
+                const entry = state.casHistory[state.casHistory.length - 1 - state.casHistoryIndex];
+                document.getElementById('casInput').value = entry.input;
+            }
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (state.casHistoryIndex > 0) {
+                state.casHistoryIndex--;
+                const entry = state.casHistory[state.casHistory.length - 1 - state.casHistoryIndex];
+                document.getElementById('casInput').value = entry.input;
+            } else {
+                state.casHistoryIndex = -1;
+                document.getElementById('casInput').value = '';
+            }
+        }
+    }
+
+    function clearAllFunctions() {
+        if (confirm('Clear all functions?')) {
+            state.functions = [];
+            addFunction();
+        }
+    }
+
+    function init() {
+        loadState(); resize(); renderFunctions(); renderCAS(); setTheme(state.theme); detectParams();
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('mousedown', startPan);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', () => { if(state.interaction.isPanning) saveState(); state.interaction.isPanning = false; });
+        canvas.addEventListener('mouseleave', () => { state.interaction.traceX = null; document.getElementById('traceInfo').style.display = 'none'; draw(); });
+        canvas.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY > 0 ? 0.9 : 1.1, e.clientX, e.clientY); }, { passive: false });
+        draw();
+    }
+
+    function loadState() {
+        const saved = localStorage.getItem('ti_clone_state_v5');
+        if (saved) { try { Object.assign(state, JSON.parse(saved)); } catch(e) {} }
+    }
+    function saveState() { localStorage.setItem('ti_clone_state_v5', JSON.stringify({ functions: state.functions, view: state.view, theme: state.theme, casHistory: state.casHistory, params: state.params })); }
+
+    function setTheme(t) { state.theme = t; document.documentElement.setAttribute('data-theme', t); saveState(); draw(); }
+    function switchTab(t) {
+        document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.id === 'tab' + t.charAt(0).toUpperCase() + t.slice(1)));
+        document.getElementById('functionsContainer').style.display = t === 'functions' ? 'flex' : 'none';
+        document.getElementById('casContainer').classList.toggle('active', t === 'cas');
+    }
+
+    function renderFunctions() {
+        functionList.innerHTML = state.functions.map((fn, i) => `
+            <div class="function-item">
+                <div class="function-header">
+                    <div style="display:flex; align-items:center; gap:5px;">
+                        <input type="color" class="color-picker" value="${fn.color}" onchange="updateFn(${i}, 'color', this.value)">
+                        <button class="btn-icon" onclick="updateFn(${i}, 'enabled', ${!fn.enabled})" title="Toggle Visibility">${fn.enabled ? '👁️' : '🕶️'}</button>
+                        <span style="font-size:0.8rem; font-weight:bold;">${fn.type[0].toUpperCase()}${i+1}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:5px;">
+                        <select class="mode-select" onchange="updateFn(${i}, 'type', this.value)">
+                            <option value="function" ${fn.type==='function'?'selected':''}>y=f(x)</option>
+                            <option value="parametric" ${fn.type==='parametric'?'selected':''}>param</option>
+                            <option value="polar" ${fn.type==='polar'?'selected':''}>polar</option>
+                        </select>
+                        <button class="btn-icon" onclick="deleteFunction(${i})">×</button>
+                    </div>
+                </div>
+                ${fn.type==='function' ? `<div class="input-row"><span class="input-prefix">y(x)=</span><input type="text" class="function-input" value="${fn.expression}" oninput="updateFn(${i}, 'expression', this.value)"></div>` : 
+                  fn.type==='parametric' ? `<div class="input-row"><span class="input-prefix">x(t)=</span><input type="text" class="function-input" value="${fn.exprX}" oninput="updateFn(${i}, 'exprX', this.value)"></div><div class="input-row"><span class="input-prefix">y(t)=</span><input type="text" class="function-input" value="${fn.exprY}" oninput="updateFn(${i}, 'exprY', this.value)"></div>` :
+                  `<div class="input-row"><span class="input-prefix">r(θ)=</span><input type="text" class="function-input" value="${fn.exprR}" oninput="updateFn(${i}, 'exprR', this.value)"></div>`}
+            </div>
+        `).join('');
+        detectParams();
+    }
+
+    function updateFn(i, prop, val) { state.functions[i][prop] = val; if(prop==='type'||prop==='enabled') renderFunctions(); saveState(); draw(); }
+    function addFunction() { 
+        state.functions.push({ id: 'fn'+Date.now(), type: 'function', expression: '', color: '#3742fa', enabled: true, exprX: '', exprY: '', exprR: '', tMin: 0, tMax: 6.28, thetaMin: 0, thetaMax: 6.28 });
+        renderFunctions(); saveState(); draw();
+    }
+    function deleteFunction(i) { state.functions.splice(i, 1); if(state.functions.length===0) addFunction(); renderFunctions(); saveState(); draw(); }
+
+    function detectParams() {
+        const allExpr = state.functions.map(f => f.expression + f.exprX + f.exprY + f.exprR).join('');
+        const found = ['a', 'b', 'c'].filter(p => allExpr.includes(p));
+        document.getElementById('paramSection').style.display = found.length ? 'block' : 'none';
+        document.getElementById('paramList').innerHTML = found.map(p => `
+            <div class="param-slider-row">
+                <span>${p}:</span>
+                <input type="range" class="param-slider" min="-10" max="10" step="0.1" value="${state.params[p]}" oninput="state.params['${p}']=+this.value; this.nextElementSibling.textContent=this.value; draw();">
+                <span class="param-value">${state.params[p]}</span>
+            </div>
+        `).join('');
+    }
+
+    function insertConstant(c) {
+        const input = document.getElementById('casInput');
+        input.value += (c === 'pi' ? 'pi' : c); input.focus();
+    }
+
+    function runCAS() {
+        const input = document.getElementById('casInput'), cmd = input.value.trim();
+        if (!cmd) return;
+        try {
+            const res = math.evaluate(cmd, state.params);
+            const output = math.format(res, {precision: 10});
+            state.casHistory.push({ input: cmd, output: output });
+            state.casHistoryIndex = -1;
+        } catch(e) { state.casHistory.push({ input: cmd, output: 'Error: ' + e.message }); }
+        renderCAS(); input.value = ''; saveState();
+    }
+    function renderCAS() {
+        const hist = document.getElementById('casHistory');
+        hist.innerHTML = state.casHistory.map(h => `
+            <div class="cas-entry">
+                <div class="cas-input-line">In: ${h.input}</div>
+                <div class="cas-output-line">Out: ${h.output}</div>
+            </div>
+        `).join('');
+        hist.scrollTop = 99999;
+    }
+
+    function toScreenX(x) { return (viewport.clientWidth / 2) + (x - state.view.centerX) * state.view.scale; }
+    function toScreenY(y) { return (viewport.clientHeight / 2) - (y - state.view.centerY) * state.view.scale; }
+    function toMathX(sx) { return (sx - viewport.clientWidth / 2) / state.view.scale + state.view.centerX; }
+    function toMathY(sy) { return (viewport.clientHeight / 2 - sy) / state.view.scale + state.view.centerY; }
+
+    function startPan(e) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        if (state.analysis.mode) { performAnalysis(toMathX(mouseX), toMathY(mouseY)); return; }
+        state.interaction.isPanning = true;
+        state.interaction.lastMouseX = e.clientX; state.interaction.lastMouseY = e.clientY;
+    }
+    function handleMouseMove(e) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        if (state.interaction.isPanning) {
+            state.view.centerX -= (e.clientX - state.interaction.lastMouseX) / state.view.scale;
+            state.view.centerY += (e.clientY - state.interaction.lastMouseY) / state.view.scale;
+            state.interaction.lastMouseX = e.clientX; state.interaction.lastMouseY = e.clientY;
+            draw();
+        } else {
+            state.interaction.traceX = toMathX(mouseX);
+            updateTrace(); draw();
+        }
+    }
+    function zoom(f, cx, cy) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (cx !== undefined ? cx : viewport.clientWidth/2 + rect.left) - rect.left;
+        const y = (cy !== undefined ? cy : viewport.clientHeight/2 + rect.top) - rect.top;
+        const mx = toMathX(x), my = toMathY(y);
+        state.view.scale *= f;
+        state.view.centerX = mx - (x - viewport.clientWidth / 2) / state.view.scale;
+        state.view.centerY = my - (viewport.clientHeight / 2 - y) / state.view.scale;
+        draw();
+        saveState();
+    }
+    function resetView() { state.view = { centerX: 0, centerY: 0, scale: 50 }; state.analysis.points = []; draw(); saveState(); }
+
+    function updateTrace() {
+        const info = document.getElementById('traceInfo'), fn = state.functions.find(f => f.enabled && f.type === 'function' && f.expression);
+        if (!fn || state.interaction.traceX === null) { info.style.display = 'none'; return; }
+        try {
+            const scope = { x: state.interaction.traceX, ...state.params };
+            const y = math.evaluate(fn.expression.replace(/[<>]=?.*$/, ''), scope);
+            if (typeof y === 'number' && isFinite(y)) {
+                info.style.display = 'block'; info.innerHTML = `x: ${state.interaction.traceX.toFixed(4)}<br>y: ${y.toFixed(4)}`;
+            } else { info.style.display = 'none'; }
+        } catch(e) { info.style.display = 'none'; }
+    }
+
+    function exportPNG() {
+        draw();
+        const link = document.createElement('a');
+        link.download = 'graph.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }
+
+    function toggleAnalysisMenu() { const m = document.getElementById('analysisMenu'); m.style.display = m.style.display === 'flex' ? 'none' : 'flex'; }
+    function startAnalysis(m) { 
+        state.analysis.mode = m; toggleAnalysisMenu(); canvas.style.cursor = 'crosshair';
+        const info = document.getElementById('traceInfo');
+        info.style.display = 'block'; info.innerHTML = `<strong>Analysis Mode: ${m.toUpperCase()}</strong><br>Click on the graph near the point.`;
+    }
+    function performAnalysis(mx, my) {
+        canvas.style.cursor = 'default';
+        const fn = state.functions.find(f => f.enabled && f.type === 'function' && f.expression);
+        if (!fn) { state.analysis.mode = null; return; }
+        try {
+            const expr = fn.expression.replace(/[<>]=?.*$/, '');
+            const scope = { ...state.params };
+            const prog = math.compile(expr), deriv = math.derivative(expr, 'x');
+            let rx = mx, ry, label = state.analysis.mode;
+            if (state.analysis.mode === 'intersection') {
+                const other = state.functions.find(f => f.id !== fn.id && f.enabled && f.type === 'function' && f.expression);
+                if (!other) { alert('Need two functions for intersection'); state.analysis.mode = null; return; }
+                const expr2 = other.expression.replace(/[<>]=?.*$/, '');
+                const prog2 = math.compile(expr2), deriv2 = math.derivative(expr2, 'x');
+                for(let i=0; i<20; i++) {
+                    scope.x = rx;
+                    const diff = prog.evaluate(scope) - prog2.evaluate(scope), dDiff = deriv.evaluate(scope) - deriv2.evaluate(scope);
+                    if (Math.abs(dDiff) < 1e-12) break;
+                    rx -= diff / dDiff;
+                }
+                label = 'Intersect';
+            } else {
+                const d2 = state.analysis.mode !== 'zero' ? math.derivative(deriv, 'x') : null;
+                for(let i=0; i<20; i++) {
+                    scope.x = rx;
+                    const val = state.analysis.mode === 'zero' ? prog.evaluate(scope) : deriv.evaluate(scope);
+                    const dval = state.analysis.mode === 'zero' ? deriv.evaluate(scope) : d2.evaluate(scope);
+                    if (Math.abs(dval) < 1e-12) break;
+                    rx -= val / dval;
+                }
+            }
+            scope.x = rx; ry = prog.evaluate(scope);
+            if (isFinite(rx) && isFinite(ry)) state.analysis.points.push({ x: rx, y: ry, label: label[0].toUpperCase()+label.slice(1) });
+        } catch(e) {}
+        state.analysis.mode = null; document.getElementById('traceInfo').style.display = 'none'; draw();
+    }
+
+    function toggleTable() {
+        const panel = document.getElementById('tablePanel');
+        panel.classList.toggle('open');
+        if (panel.classList.contains('open')) {
+            const select = document.getElementById('tableFunctionSelect');
+            const cartesianFns = state.functions.filter(f => f.type === 'function');
+            select.innerHTML = cartesianFns.map((f, i) => `<option value="${f.id}">Y${i+1}: ${f.expression || '(empty)'}</option>`).join('');
+            if (cartesianFns.length === 0) select.innerHTML = '<option value="">No functions</option>';
+            updateTable();
+        }
+    }
+
+    function updateTable() {
+        const tb = document.querySelector('#valueTable tbody'), select = document.getElementById('tableFunctionSelect');
+        const start = parseFloat(document.getElementById('tableStart').value) || 0, step = parseFloat(document.getElementById('tableStep').value) || 1;
+        tb.innerHTML = ''; if (!select.value) return;
+        const fn = state.functions.find(f => f.id === select.value);
+        if (!fn || !fn.expression) return;
+        try {
+            const expr = fn.expression.replace(/[<>]=?.*$/, ''), prog = math.compile(expr);
+            for (let i = 0; i < 30; i++) {
+                const x = start + i * step, y = prog.evaluate({ x, ...state.params });
+                tb.innerHTML += `<tr><td style="border:1px solid var(--border); padding:8px;">${x.toFixed(2)}</td><td style="border:1px solid var(--border); padding:5px;">${isFinite(y) ? y.toFixed(4) : 'undef'}</td></tr>`;
+            }
+        } catch (e) {}
+    }
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = viewport.clientWidth * dpr; canvas.height = viewport.clientHeight * dpr;
+        canvas.style.width = viewport.clientWidth + 'px'; canvas.style.height = viewport.clientHeight + 'px';
+        draw();
+    }
+
+    function draw() {
+        const dpr = window.devicePixelRatio || 1; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const w = viewport.clientWidth, h = viewport.clientHeight, style = getComputedStyle(document.documentElement);
+        ctx.fillStyle = style.getPropertyValue('--bg-viewport').trim(); ctx.fillRect(0, 0, w, h);
+        const rs = 80/state.view.scale, m = 10**Math.floor(Math.log10(rs)), n = rs/m;
+        const step = m*(n<1.5?1:n<3.5?2:n<7.5?5:10);
+        ctx.strokeStyle = style.getPropertyValue('--grid'); ctx.lineWidth = 1; ctx.font = '10px Arial'; ctx.fillStyle = style.getPropertyValue('--label');
+        for (let x = Math.floor(toMathX(0)/step)*step; x <= toMathX(w); x += step) {
+            const sx = toScreenX(x); ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+            if (Math.abs(x)>1e-9) { ctx.textAlign='center'; ctx.fillText(x.toFixed(2), sx, Math.min(Math.max(0, toScreenY(0)+5), h-15)); }
+        }
+        for (let y = Math.floor(toMathY(h)/step)*step; y <= toMathY(0); y += step) {
+            const sy = toScreenY(y); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+            if (Math.abs(y)>1e-9) { ctx.textAlign='right'; ctx.fillText(y.toFixed(2), Math.min(Math.max(25, toScreenX(0)-5), w-5), sy); }
+        }
+        ctx.strokeStyle = style.getPropertyValue('--axis'); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, toScreenY(0)); ctx.lineTo(w, toScreenY(0)); ctx.moveTo(toScreenX(0), 0); ctx.lineTo(toScreenX(0), h); ctx.stroke();
+
+        state.functions.forEach(fn => {
+            if (!fn.enabled) return;
+            ctx.strokeStyle = fn.color; ctx.lineWidth = 2.5; ctx.beginPath();
+            const scope = { ...state.params };
+            if (fn.type === 'function' && fn.expression) {
+                const op = fn.expression.match(/[<>]=?/)?.[0], expr = fn.expression.split(/[<>]=?/)[1] || fn.expression;
+                try {
+                    const prog = math.compile(expr); let first = true;
+                    for (let px=0; px<=w; px++) {
+                        scope.x = toMathX(px); const y = prog.evaluate(scope);
+                        if (!isFinite(y)) { first = true; continue; }
+                        const py = toScreenY(y);
+                        if (op) { ctx.fillStyle = fn.color+'22'; ctx.fillRect(px, py, 1, op[0]==='<' ? h-py : -py); }
+                        if (first) { ctx.moveTo(px, py); first = false; } else { ctx.lineTo(px, py); }
+                    }
+                } catch(e) {}
+            } else if (fn.type === 'parametric' && fn.exprX && fn.exprY) {
+                try {
+                    const px = math.compile(fn.exprX), py = math.compile(fn.exprY);
+                    for (let t=0; t<=200; t++) {
+                        scope.t = t * 12.56 / 200;
+                        const vx = px.evaluate(scope), vy = py.evaluate(scope);
+                        if (t===0) ctx.moveTo(toScreenX(vx), toScreenY(vy)); else ctx.lineTo(toScreenX(vx), toScreenY(vy));
+                    }
+                } catch(e) {}
+            } else if (fn.type === 'polar' && fn.exprR) {
+                try {
+                    const pr = math.compile(fn.exprR);
+                    for (let th=0; th<=360; th++) {
+                        scope.theta = scope.θ = th * 6.28 / 360;
+                        const r = pr.evaluate(scope), vx = r*Math.cos(scope.theta), vy = r*Math.sin(scope.theta);
+                        if (th===0) ctx.moveTo(toScreenX(vx), toScreenY(vy)); else ctx.lineTo(toScreenX(vx), toScreenY(vy));
+                    }
+                } catch(e) {}
+            }
+            ctx.stroke();
+        });
+        state.analysis.points.forEach(pt => {
+            const sx = toScreenX(pt.x), sy = toScreenY(pt.y);
+            ctx.fillStyle = style.getPropertyValue('--axis'); ctx.beginPath(); ctx.arc(sx, sy, 5, 0, 7); ctx.fill();
+            ctx.fillStyle = style.getPropertyValue('--text'); ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+            ctx.fillText(`${pt.label}:(${pt.x.toFixed(2)},${pt.y.toFixed(2)})`, sx+8, sy);
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
