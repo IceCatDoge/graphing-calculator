@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Graphing Calculator</title>
+    <title>TI-Nspire CAS Clone</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -29,7 +29,7 @@
         .app-container { display: flex; height: 100vh; }
         .sidebar { width: var(--sidebar-width); background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; transition: transform 0.3s; }
         .sidebar-header { padding: 15px; background: var(--primary); color: white; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
-        .theme-select { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 4px; padding: 2px 5px; font-size: 0.75rem; outline: none; }
+        .theme-select { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 4px; padding: 2px 5px; font-size: 0.75rem; outline: none; cursor: pointer; }
         .theme-select option { background: var(--bg-sidebar); color: var(--text); }
         .tabs { display: flex; background: var(--bg-app); border-bottom: 1px solid var(--border); }
         .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 0.8rem; color: var(--text-muted); border-bottom: 2px solid transparent; }
@@ -46,10 +46,48 @@
         .color-picker { width: 18px; height: 18px; border: none; padding: 0; background: none; cursor: pointer; border-radius: 50%; overflow: hidden; }
         .param-section { padding: 10px; background: var(--bg-app); border-top: 1px solid var(--border); max-height: 150px; overflow-y: auto; }
         .param-slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.75rem; }
-        .viewport { flex: 1; position: relative; background: var(--bg-viewport); overflow: hidden; }
-        canvas { display: block; touch-action: none; }
-        .controls-overlay { position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 15; }
+        
+        .viewport { flex: 1; position: relative; background: var(--bg-viewport); overflow: hidden; display: flex; flex-direction: column; }
+        canvas { flex: 1; display: block; touch-action: none; min-height: 0; }
+        
+        .footer-controls {
+            background: var(--bg-sidebar);
+            border-top: 1px solid var(--border);
+            padding: 8px;
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 5px;
+            z-index: 20;
+        }
+
+        .footer-btn {
+            padding: 10px 2px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-app);
+            color: var(--text);
+            font-size: 0.85rem;
+            cursor: pointer;
+            text-align: center;
+            user-select: none;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .footer-btn:active { background: var(--primary); color: white; }
+
+        .controls-overlay { position: absolute; bottom: 85px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 15; }
         .btn-round { width: 44px; height: 44px; border-radius: 50%; background: var(--bg-sidebar); border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text); font-size: 1.1rem; }
+        
+        @media (max-width: 1024px) {
+            .app-container { flex-direction: column; }
+            .sidebar { width: 100%; height: 40%; border-right: none; border-bottom: 1px solid var(--border); }
+            .viewport { height: 60%; }
+            .footer-controls { grid-template-columns: repeat(8, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .footer-controls { grid-template-columns: repeat(5, 1fr); }
+        }
+
         .cas-container { display: none; flex-direction: column; flex: 1; padding: 10px; overflow: hidden; }
         .cas-container.active { display: flex; }
         .cas-history { flex: 1; overflow-y: auto; font-family: monospace; font-size: 0.85rem; margin-bottom: 10px; }
@@ -63,18 +101,13 @@
         .trace-info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.75); color: white; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; pointer-events: none; display: none; z-index: 20; }
         .table-panel { position: absolute; top: 0; right: -320px; width: 300px; height: 100%; background: var(--bg-sidebar); border-left: 1px solid var(--border); z-index: 30; transition: right 0.3s; display: flex; flex-direction: column; }
         .table-panel.open { right: 0; }
-        @media (max-width: 768px) {
-            .app-container { flex-direction: column; }
-            .sidebar { width: 100%; height: 50%; border-right: none; border-bottom: 1px solid var(--border); }
-            .viewport { height: 50%; }
-        }
     </style>
 </head>
 <body>
 <div class="app-container">
     <div class="sidebar">
         <div class="sidebar-header">
-            <span>Graphing Calculator</span>
+            <span>TI-Nspire Clone</span>
             <div style="display:flex; gap:5px;">
                 <button class="btn-icon" onclick="showTemplates()" title="Templates" style="color:white">📄</button>
                 <button class="btn-icon" onclick="clearAllFunctions()" title="Clear All" style="color:white">🧹</button>
@@ -122,8 +155,8 @@
             <button class="btn-round" onclick="exportPNG()" title="Export PNG">📸</button>
             <button class="btn-round" onclick="toggleAnalysisMenu()" title="Analyze Graph">A</button>
             <button class="btn-round" onclick="toggleTable()" title="Value Table">T</button>
-            <button class="btn-round" onclick="zoom(0.8)" title="Zoom In">+</button>
-            <button class="btn-round" onclick="zoom(1.25)" title="Zoom Out">-</button>
+            <button class="btn-round" onclick="zoom(1.25)" title="Zoom In">+</button>
+            <button class="btn-round" onclick="zoom(0.8)" title="Zoom Out">-</button>
             <button class="btn-round" onclick="resetView()" title="Home">⌂</button>
         </div>
         <div class="table-panel" id="tablePanel">
@@ -158,6 +191,19 @@
                 </div>
             </div>
         </div>
+
+        <div class="footer-controls" id="footerControls">
+            <div class="footer-btn" onclick="insertFooter('sin(')">sin</div>
+            <div class="footer-btn" onclick="insertFooter('cos(')">cos</div>
+            <div class="footer-btn" onclick="insertFooter('tan(')">tan</div>
+            <div class="footer-btn" onclick="insertFooter('log(')">log</div>
+            <div class="footer-btn" onclick="insertFooter('sqrt(')">sqrt</div>
+            <div class="footer-btn" onclick="insertFooter('x')">x</div>
+            <div class="footer-btn" onclick="insertFooter('y')">y</div>
+            <div class="footer-btn" onclick="insertFooter('t')">t</div>
+            <div class="footer-btn" onclick="insertFooter('theta')">θ</div>
+            <div class="footer-btn" onclick="insertFooter('^')">^</div>
+        </div>
     </div>
 </div>
 <script>
@@ -169,7 +215,7 @@
         view: { centerX: 0, centerY: 0, scale: 50 },
         theme: 'classic', casHistory: [], casHistoryIndex: -1, analysis: { mode: null, points: [] },
         params: { a: 1, b: 1, c: 1 },
-        interaction: { isPanning: false, lastMouseX: 0, lastMouseY: 0, traceX: null }
+        interaction: { isPanning: false, lastMouseX: 0, lastMouseY: 0, traceX: null, activeInput: null }
     };
 
     function showTemplates() {
@@ -206,17 +252,35 @@
         modal.style.display = 'flex';
     }
 
-    function hideTemplates() {
-        document.getElementById('templatesModal').style.display = 'none';
-    }
+    function hideTemplates() { document.getElementById('templatesModal').style.display = 'none'; }
 
     function insertCAS(cmd) {
         const input = document.getElementById('casInput');
-        input.value = cmd;
-        hideTemplates();
-        input.focus();
+        input.value = cmd; hideTemplates(); input.focus();
         const idx = cmd.indexOf('()');
         if (idx !== -1) input.setSelectionRange(idx + 1, idx + 1);
+    }
+
+    function insertFooter(text) {
+        const input = state.interaction.activeInput || document.getElementById('casInput');
+        if (!input) return;
+        const start = input.selectionStart, end = input.selectionEnd;
+        input.value = input.value.slice(0, start) + text + input.value.slice(end);
+        input.focus();
+        const newPos = start + text.length;
+        input.setSelectionRange(newPos, newPos);
+        // Trigger update
+        if (input.id === 'casInput') {} else {
+            const idx = Array.from(document.querySelectorAll('.function-input')).indexOf(input);
+            if (idx !== -1) {
+                const fnIdx = Math.floor(idx / (state.functions[Math.floor(idx/2)]?.type === 'parametric' ? 2 : 1));
+                // Simplified update
+                state.functions.forEach((f, i) => {
+                    const inputs = document.querySelectorAll('.function-item')[i].querySelectorAll('.function-input');
+                    inputs.forEach(inp => { if(inp === input) updateFn(i, inp.dataset.prop, inp.value); });
+                });
+            }
+        }
     }
 
     function useTemplate(type, exprs) {
@@ -245,19 +309,11 @@
                 state.casHistoryIndex--;
                 const entry = state.casHistory[state.casHistory.length - 1 - state.casHistoryIndex];
                 document.getElementById('casInput').value = entry.input;
-            } else {
-                state.casHistoryIndex = -1;
-                document.getElementById('casInput').value = '';
-            }
+            } else { state.casHistoryIndex = -1; document.getElementById('casInput').value = ''; }
         }
     }
 
-    function clearAllFunctions() {
-        if (confirm('Clear all functions?')) {
-            state.functions = [];
-            addFunction();
-        }
-    }
+    function clearAllFunctions() { if (confirm('Clear all functions?')) { state.functions = []; addFunction(); } }
 
     function init() {
         loadState(); resize(); renderFunctions(); renderCAS(); setTheme(state.theme); detectParams();
@@ -301,9 +357,9 @@
                         <button class="btn-icon" onclick="deleteFunction(${i})">×</button>
                     </div>
                 </div>
-                ${fn.type==='function' ? `<div class="input-row"><span class="input-prefix">y(x)=</span><input type="text" class="function-input" value="${fn.expression}" oninput="updateFn(${i}, 'expression', this.value)"></div>` : 
-                  fn.type==='parametric' ? `<div class="input-row"><span class="input-prefix">x(t)=</span><input type="text" class="function-input" value="${fn.exprX}" oninput="updateFn(${i}, 'exprX', this.value)"></div><div class="input-row"><span class="input-prefix">y(t)=</span><input type="text" class="function-input" value="${fn.exprY}" oninput="updateFn(${i}, 'exprY', this.value)"></div>` :
-                  `<div class="input-row"><span class="input-prefix">r(θ)=</span><input type="text" class="function-input" value="${fn.exprR}" oninput="updateFn(${i}, 'exprR', this.value)"></div>`}
+                ${fn.type==='function' ? `<div class="input-row"><span class="input-prefix">y(x)=</span><input type="text" class="function-input" value="${fn.expression}" data-prop="expression" oninput="updateFn(${i}, 'expression', this.value)" onfocus="state.interaction.activeInput = this" spellcheck="false"></div>` : 
+                  fn.type==='parametric' ? `<div class="input-row"><span class="input-prefix">x(t)=</span><input type="text" class="function-input" value="${fn.exprX}" data-prop="exprX" oninput="updateFn(${i}, 'exprX', this.value)" onfocus="state.interaction.activeInput = this" spellcheck="false"></div><div class="input-row"><span class="input-prefix">y(t)=</span><input type="text" class="function-input" value="${fn.exprY}" data-prop="exprY" oninput="updateFn(${i}, 'exprY', this.value)" onfocus="state.interaction.activeInput = this" spellcheck="false"></div>` :
+                  `<div class="input-row"><span class="input-prefix">r(θ)=</span><input type="text" class="function-input" value="${fn.exprR}" data-prop="exprR" oninput="updateFn(${i}, 'exprR', this.value)" onfocus="state.interaction.activeInput = this" spellcheck="false"></div>`}
             </div>
         `).join('');
         detectParams();
@@ -363,16 +419,14 @@
 
     function startPan(e) {
         const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
         if (state.analysis.mode) { performAnalysis(toMathX(mouseX), toMathY(mouseY)); return; }
         state.interaction.isPanning = true;
         state.interaction.lastMouseX = e.clientX; state.interaction.lastMouseY = e.clientY;
     }
     function handleMouseMove(e) {
         const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
         if (state.interaction.isPanning) {
             state.view.centerX -= (e.clientX - state.interaction.lastMouseX) / state.view.scale;
             state.view.centerY += (e.clientY - state.interaction.lastMouseY) / state.view.scale;
@@ -391,8 +445,7 @@
         state.view.scale *= f;
         state.view.centerX = mx - (x - viewport.clientWidth / 2) / state.view.scale;
         state.view.centerY = my - (viewport.clientHeight / 2 - y) / state.view.scale;
-        draw();
-        saveState();
+        draw(); saveState();
     }
     function resetView() { state.view = { centerX: 0, centerY: 0, scale: 50 }; state.analysis.points = []; draw(); saveState(); }
 
@@ -420,7 +473,7 @@
     function startAnalysis(m) { 
         state.analysis.mode = m; toggleAnalysisMenu(); canvas.style.cursor = 'crosshair';
         const info = document.getElementById('traceInfo');
-        info.style.display = 'block'; info.innerHTML = `<strong>Analysis Mode: ${m.toUpperCase()}</strong><br>Click on the graph near the point.`;
+        info.style.display = 'block'; info.innerHTML = `<strong>Analysis Mode: ${m.toUpperCase()}</strong><br>Click near the point.`;
     }
     function performAnalysis(mx, my) {
         canvas.style.cursor = 'default';
