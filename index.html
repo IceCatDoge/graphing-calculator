@@ -147,8 +147,9 @@
             <div class="analysis-item" onclick="startAnalysis('min')">Minimum</div>
             <div class="analysis-item" onclick="startAnalysis('max')">Maximum</div>
             <div class="analysis-item" onclick="startAnalysis('intersection')">Intersection</div>
+            <div class="analysis-item" onclick="startAnalysis('integral')">Integral (Area)</div>
             <div style="height: 1px; background: var(--border);"></div>
-            <div class="analysis-item" style="color: #ff4757" onclick="state.analysis.points=[]; draw(); toggleAnalysisMenu();">Clear All</div>
+            <div class="analysis-item" style="color: #ff4757" onclick="state.analysis.points=[]; state.analysis.integrals=[]; draw(); toggleAnalysisMenu();">Clear All</div>
         </div>
         <canvas id="graphCanvas"></canvas>
         <div class="controls-overlay">
@@ -213,7 +214,7 @@
     const state = {
         functions: [{ id: 'fn'+Date.now(), type: 'function', expression: 'sin(x)', color: '#ff4757', enabled: true, exprX: '', exprY: '', exprR: '', tMin: 0, tMax: 6.28, thetaMin: 0, thetaMax: 6.28 }],
         view: { centerX: 0, centerY: 0, scale: 50 },
-        theme: 'classic', casHistory: [], casHistoryIndex: -1, analysis: { mode: null, points: [] },
+        theme: 'classic', casHistory: [], casHistoryIndex: -1, analysis: { mode: null, step: 1, startX: null, points: [], integrals: [] },
         params: { a: 1, b: 1, c: 1 },
         interaction: { isPanning: false, lastMouseX: 0, lastMouseY: 0, traceX: null, activeInput: null }
     };
@@ -314,15 +315,45 @@
     }
 
     function clearAllFunctions() { if (confirm('Clear all functions?')) { state.functions = []; addFunction(); } }
+    let lastTouchDist = null; // Helper to measure pinch distance
 
     function init() {
         loadState(); resize(); renderFunctions(); renderCAS(); setTheme(state.theme); detectParams();
         window.addEventListener('resize', resize);
+        
+        // Mouse Events (Desktop)
         canvas.addEventListener('mousedown', startPan);
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', () => { if(state.interaction.isPanning) saveState(); state.interaction.isPanning = false; });
         canvas.addEventListener('mouseleave', () => { state.interaction.traceX = null; document.getElementById('traceInfo').style.display = 'none'; draw(); });
         canvas.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY > 0 ? 0.9 : 1.1, e.clientX, e.clientY); }, { passive: false });
+        
+        // Mobile Touch Events (Phones/Tablets)
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            if (e.touches.length === 1) startPan(e.touches[0]);
+            else if (e.touches.length === 2) {
+                lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            }
+        }, {passive: false});
+        
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length === 1 && state.interaction.isPanning) handleMouseMove(e.touches[0]);
+            else if (e.touches.length === 2 && lastTouchDist) {
+                const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                zoom(dist / lastTouchDist, centerX, centerY);
+                lastTouchDist = dist;
+            }
+        }, {passive: false});
+        
+        canvas.addEventListener('touchend', e => {
+            if (e.touches.length < 2) lastTouchDist = null;
+            if (e.touches.length === 0 && state.interaction.isPanning) { saveState(); state.interaction.isPanning = false; }
+        });
+        
         draw();
     }
 
@@ -403,13 +434,28 @@
     }
     function renderCAS() {
         const hist = document.getElementById('casHistory');
-        hist.innerHTML = state.casHistory.map(h => `
+        hist.innerHTML = state.casHistory.map(h => {
+            // Translate standard math strings into LaTeX format
+            let texIn = h.input, texOut = h.output;
+            try { texIn = math.parse(h.input).toTex(); } catch(e) {}
+            try { 
+                if (isNaN(h.output) && !h.output.includes('Error')) {
+                    texOut = math.parse(h.output).toTex(); 
+                }
+            } catch(e) {}
+
+            return `
             <div class="cas-entry">
-                <div class="cas-input-line">In: ${h.input}</div>
-                <div class="cas-output-line">Out: ${h.output}</div>
+                <div class="cas-input-line" style="margin-bottom: 4px;">In: <span class="math-tex">${texIn}</span></div>
+                <div class="cas-output-line">Out: <span class="math-tex">${texOut}</span></div>
             </div>
-        `).join('');
+        `}).join('');
         hist.scrollTop = 99999;
+        
+        // Command KaTeX to render all the spans we just created
+        document.querySelectorAll('.math-tex').forEach(el => {
+            try { katex.render(el.textContent, el, { throwOnError: false, displayMode: false }); } catch(e) {}
+        });
     }
 
     function toScreenX(x) { return (viewport.clientWidth / 2) + (x - state.view.centerX) * state.view.scale; }
@@ -430,6 +476,10 @@
         if (state.interaction.isPanning) {
             state.view.centerX -= (e.clientX - state.interaction.lastMouseX) / state.view.scale;
             state.view.centerY += (e.clientY - state.interaction.lastMouseY) / state.view.scale;
+			// --- Magnetic snap to (0,0) ---
+            const snapThreshold = 15 / state.view.scale; 
+            if (Math.abs(state.view.centerX) < snapThreshold) state.view.centerX = 0;
+            if (Math.abs(state.view.centerY) < snapThreshold) state.view.centerY = 0;
             state.interaction.lastMouseX = e.clientX; state.interaction.lastMouseY = e.clientY;
             draw();
         } else {
@@ -453,10 +503,16 @@
         const info = document.getElementById('traceInfo'), fn = state.functions.find(f => f.enabled && f.type === 'function' && f.expression);
         if (!fn || state.interaction.traceX === null) { info.style.display = 'none'; return; }
         try {
+            const expr = fn.expression.replace(/[<>]=?.*$/, '');
             const scope = { x: state.interaction.traceX, ...state.params };
-            const y = math.evaluate(fn.expression.replace(/[<>]=?.*$/, ''), scope);
+            const y = math.evaluate(expr, scope);
+            
+            // --- NEW CODE: Calculate the derivative (slope) ---
+            const slope = math.derivative(expr, 'x').evaluate(scope);
+            
             if (typeof y === 'number' && isFinite(y)) {
-                info.style.display = 'block'; info.innerHTML = `x: ${state.interaction.traceX.toFixed(4)}<br>y: ${y.toFixed(4)}`;
+                info.style.display = 'block'; 
+                info.innerHTML = `x: ${state.interaction.traceX.toFixed(4)}<br>y: ${y.toFixed(4)}<br>m: ${slope.toFixed(4)}`;
             } else { info.style.display = 'none'; }
         } catch(e) { info.style.display = 'none'; }
     }
@@ -471,14 +527,46 @@
 
     function toggleAnalysisMenu() { const m = document.getElementById('analysisMenu'); m.style.display = m.style.display === 'flex' ? 'none' : 'flex'; }
     function startAnalysis(m) { 
-        state.analysis.mode = m; toggleAnalysisMenu(); canvas.style.cursor = 'crosshair';
+        state.analysis.mode = m; state.analysis.step = 1; toggleAnalysisMenu(); canvas.style.cursor = 'crosshair';
         const info = document.getElementById('traceInfo');
-        info.style.display = 'block'; info.innerHTML = `<strong>Analysis Mode: ${m.toUpperCase()}</strong><br>Click near the point.`;
+        info.style.display = 'block'; 
+        info.innerHTML = `<strong>Analysis Mode: ${m.toUpperCase()}</strong><br>${m === 'integral' ? 'Click lower bound (start x).' : 'Click near the point.'}`;
     }
     function performAnalysis(mx, my) {
-        canvas.style.cursor = 'default';
         const fn = state.functions.find(f => f.enabled && f.type === 'function' && f.expression);
         if (!fn) { state.analysis.mode = null; return; }
+        
+        // --- INTEGRAL LOGIC ---
+        if (state.analysis.mode === 'integral') {
+            if (state.analysis.step === 1) {
+                state.analysis.startX = mx;
+                state.analysis.step = 2;
+                document.getElementById('traceInfo').innerHTML = `<strong>Analysis Mode: INTEGRAL</strong><br>Click upper bound (end x).`;
+                return; // Keep cursor as crosshair, wait for second click
+            } else {
+                const endX = mx;
+                const start = Math.min(state.analysis.startX, endX);
+                const end = Math.max(state.analysis.startX, endX);
+                const prog = math.compile(fn.expression.replace(/[<>]=?.*$/, ''));
+                
+                // Calculate area using the Trapezoidal Rule
+                let area = 0, steps = 200, dx = (end - start) / steps;
+                for(let i=0; i<steps; i++) {
+                    let y1 = prog.evaluate({ x: start + i*dx, ...state.params });
+                    let y2 = prog.evaluate({ x: start + (i+1)*dx, ...state.params });
+                    area += (y1 + y2) / 2 * dx;
+                }
+                
+                state.analysis.integrals.push({ start, end, area, color: fn.color });
+                state.analysis.mode = null;
+                canvas.style.cursor = 'default';
+                document.getElementById('traceInfo').style.display = 'none';
+                draw();
+                return;
+            }
+        }
+        // --- END INTEGRAL LOGIC ---
+        canvas.style.cursor = 'default';
         try {
             const expr = fn.expression.replace(/[<>]=?.*$/, '');
             const scope = { ...state.params };
@@ -570,43 +658,102 @@
             const scope = { ...state.params };
             if (fn.type === 'function' && fn.expression) {
                 const op = fn.expression.match(/[<>]=?/)?.[0], expr = fn.expression.split(/[<>]=?/)[1] || fn.expression;
-                try {
-                    const prog = math.compile(expr); let first = true;
-                    for (let px=0; px<=w; px++) {
-                        scope.x = toMathX(px); const y = prog.evaluate(scope);
+                if (op === '<' || op === '>') ctx.setLineDash([8, 8]);
+                else ctx.setLineDash([]);				
+				try {
+                    const prog = math.compile(expr); 
+                    let first = true, lastPy = 0, step = 4; // Step 4 pixels at a time
+                    for (let px=0; px<=w; px += step) {
+                        scope.x = toMathX(px); 
+                        const y = prog.evaluate(scope);
                         if (!isFinite(y)) { first = true; continue; }
                         const py = toScreenY(y);
-                        if (op) { ctx.fillStyle = fn.color+'22'; ctx.fillRect(px, py, 1, op[0]==='<' ? h-py : -py); }
-                        if (first) { ctx.moveTo(px, py); first = false; } else { ctx.lineTo(px, py); }
-                    }
-                } catch(e) {}
-            } else if (fn.type === 'parametric' && fn.exprX && fn.exprY) {
-                try {
-                    const px = math.compile(fn.exprX), py = math.compile(fn.exprY);
-                    for (let t=0; t<=200; t++) {
-                        scope.t = t * 12.56 / 200;
-                        const vx = px.evaluate(scope), vy = py.evaluate(scope);
-                        if (t===0) ctx.moveTo(toScreenX(vx), toScreenY(vy)); else ctx.lineTo(toScreenX(vx), toScreenY(vy));
-                    }
-                } catch(e) {}
-            } else if (fn.type === 'polar' && fn.exprR) {
-                try {
-                    const pr = math.compile(fn.exprR);
-                    for (let th=0; th<=360; th++) {
-                        scope.theta = scope.θ = th * 6.28 / 360;
-                        const r = pr.evaluate(scope), vx = r*Math.cos(scope.theta), vy = r*Math.sin(scope.theta);
-                        if (th===0) ctx.moveTo(toScreenX(vx), toScreenY(vy)); else ctx.lineTo(toScreenX(vx), toScreenY(vy));
+                        
+                        if (op) { ctx.fillStyle = fn.color+'22'; ctx.fillRect(px, py, step, op[0]==='<' ? h-py : -py); }
+                        
+                        // Adaptive sampling: if big vertical jump, draw 1px at a time to prevent jagged lines
+                        if (!first && Math.abs(py - lastPy) > 10) {
+                            for (let spx = px - step + 1; spx <= px; spx++) {
+                                scope.x = toMathX(spx);
+                                let sy = prog.evaluate(scope);
+                                if (isFinite(sy)) ctx.lineTo(spx, toScreenY(sy));
+                            }
+                        } else {
+                            if (first) { ctx.moveTo(px, py); first = false; } 
+                            else { ctx.lineTo(px, py); }
+                        }
+                        lastPy = py;
                     }
                 } catch(e) {}
             }
             ctx.stroke();
+			ctx.setLineDash([]);
         });
+
+        // --- Draw Integrals ---
+        state.analysis.integrals.forEach(int => {
+            const startPx = toScreenX(int.start), endPx = toScreenX(int.end);
+            const fn = state.functions.find(f => f.color === int.color && f.type === 'function');
+            if (fn) {
+                const prog = math.compile(fn.expression.replace(/[<>]=?.*$/, ''));
+                ctx.fillStyle = int.color + '44'; // 44 is hex alpha for transparency
+                ctx.beginPath();
+                ctx.moveTo(startPx, toScreenY(0));
+                for(let px = startPx; px <= endPx; px += 2) {
+                    let y = prog.evaluate({ x: toMathX(px), ...state.params });
+                    ctx.lineTo(px, toScreenY(y));
+                }
+                ctx.lineTo(endPx, toScreenY(0));
+                ctx.fill();
+                
+                // Draw Area Text
+                ctx.fillStyle = style.getPropertyValue('--text'); ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(`Area: ${int.area.toFixed(4)}`, startPx + (endPx - startPx)/2, toScreenY(0) - 10);
+            }
+        });
+
         state.analysis.points.forEach(pt => {
             const sx = toScreenX(pt.x), sy = toScreenY(pt.y);
             ctx.fillStyle = style.getPropertyValue('--axis'); ctx.beginPath(); ctx.arc(sx, sy, 5, 0, 7); ctx.fill();
             ctx.fillStyle = style.getPropertyValue('--text'); ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
             ctx.fillText(`${pt.label}:(${pt.x.toFixed(2)},${pt.y.toFixed(2)})`, sx+8, sy);
         });
+		// --- Draw Trace Dot and Tangent Line ---
+        if (state.interaction.traceX !== null) {
+            const fn = state.functions.find(f => f.enabled && f.type === 'function' && f.expression);
+            if (fn) {
+                try {
+                    const expr = fn.expression.replace(/[<>]=?.*$/, '');
+                    const scope = { x: state.interaction.traceX, ...state.params };
+                    const y = math.evaluate(expr, scope);
+                    const slope = math.derivative(expr, 'x').evaluate(scope);
+                    
+                    if (isFinite(y) && isFinite(slope)) {
+                        // 1. Draw the Tangent Line
+                        ctx.strokeStyle = fn.color + '88'; // Adds transparency to the function's color
+                        ctx.setLineDash([5, 5]);
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        // Calculate endpoints extending across the screen
+                        const xLeft = toMathX(0), yLeft = slope * (xLeft - state.interaction.traceX) + y;
+                        const xRight = toMathX(w), yRight = slope * (xRight - state.interaction.traceX) + y;
+                        ctx.moveTo(toScreenX(xLeft), toScreenY(yLeft));
+                        ctx.lineTo(toScreenX(xRight), toScreenY(yRight));
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        
+                        // 2. Draw the Trace Dot
+                        ctx.fillStyle = '#ffffff';
+                        ctx.strokeStyle = fn.color;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(toScreenX(state.interaction.traceX), toScreenY(y), 5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                } catch(e) {}
+            }
+        }
     }
 
     init();
